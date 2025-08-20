@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+
+# VSCode / OS
+.vscode/
+.DS_Store
+
+# Project
+artifacts/*.json
+artifacts/*.csv

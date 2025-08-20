@@ -1,0 +1,11 @@
+python-dotenv
+google-api-python-client
+oauth2client
+boto3
+tqdm
+google-cloud-storage
+numpy
+faiss-cpu
+sentence-transformers
+langchain
+ujson
