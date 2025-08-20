@@ -22,7 +22,6 @@ The overall architecture is detailed in our paper (Figure 3).
 
 ---
 
----
 
 ## Repository Structure
 
