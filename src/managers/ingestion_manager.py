@@ -70,14 +70,11 @@ class IngestionManager:
         storage_map: Dict[str, Any]
     ) -> List[Tuple[str, str, Dict[str, Any]]]:
         doc_map = {}
-        print("Extracting unique documents from HotpotQA data...")
+        print("Extracting unique documents from HotpotQA context (supporting + distractors)...")
         for item in hotpot_data:
-            for title, _ in item["supporting_facts"]:
-                if title not in doc_map:
-                    for ctx_title, sents in item["context"]:
-                        if ctx_title == title:
-                            doc_map[title] = " ".join(sents)
-                            break
+            for ctx_title, sents in item["context"]:
+                if ctx_title not in doc_map:
+                    doc_map[ctx_title] = " ".join(sents)
         
         print(f"Total unique docs to ingest: {len(doc_map)}")
         
@@ -88,6 +85,8 @@ class IngestionManager:
             storage_info = storage_map.get(file_name, {})
             provider = storage_info.get("provider", "")
             bucket = storage_info.get("bucket", "")
+            if not provider or not bucket:
+                continue
             
             if self.cfg.deterministic_uuid:
                 key = f"{provider}:{bucket}:{file_name}"

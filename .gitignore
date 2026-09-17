@@ -5,10 +5,17 @@ __pycache__/
 .venv/
 .env
 
-# VSCode / OS
+# Editor / OS
 .vscode/
 .DS_Store
+Thumbs.db
+~$*
 
-# Project
+# Secrets (also covered by artifacts/*.json)
+artifacts/gcp-admin-key.json
+artifacts/test_credential.txt
+
+# Generated local data at artifacts root
 artifacts/*.json
 artifacts/*.csv
+artifacts/*.index

@@ -25,9 +25,12 @@ GCP_ADMIN_KEY_PATH = os.environ["GCP_ADMIN_KEY_PATH"]
 GCP_BUCKET_LOCATION = os.environ.get("GCP_BUCKET_LOCATION", "asia-northeast3")
 GCP_BUCKET_STORAGE_CLASS = os.environ.get("GCP_BUCKET_STORAGE_CLASS", "STANDARD")
 
-AWS_REGION = os.environ["AWS_REGION"]
-AWS_ADMIN_ACCESS_KEY = os.environ["AWS_ADMIN_ACCESS_KEY"]
-AWS_ADMIN_SECRET_KEY = os.environ["AWS_ADMIN_SECRET_KEY"]
+# Set SKIP_AWS=1 to run GCP-only (no AWS credentials / provisioning).
+SKIP_AWS = os.environ.get("SKIP_AWS", "0").strip().lower() in {"1", "true", "yes"}
+
+AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
+AWS_ADMIN_ACCESS_KEY = os.environ.get("AWS_ADMIN_ACCESS_KEY", "")
+AWS_ADMIN_SECRET_KEY = os.environ.get("AWS_ADMIN_SECRET_KEY", "")
 
 ARTIFACTS_DIR = Path("artifacts")
 
@@ -64,18 +67,25 @@ gcp_credentials = ServiceAccountCredentials.from_json_keyfile_name(GCP_ADMIN_KEY
 gcp_storage = build("storage", "v1", credentials=gcp_credentials)
 gcp_iam = build("iam", "v1", credentials=gcp_credentials)
 
-aws_s3 = boto3.client(
-    "s3",
-    aws_access_key_id=AWS_ADMIN_ACCESS_KEY,
-    aws_secret_access_key=AWS_ADMIN_SECRET_KEY,
-    region_name=AWS_REGION,
-)
-aws_iam = boto3.client(
-    "iam",
-    aws_access_key_id=AWS_ADMIN_ACCESS_KEY,
-    aws_secret_access_key=AWS_ADMIN_SECRET_KEY,
-    region_name=AWS_REGION,
-)
+aws_s3 = None
+aws_iam = None
+if not SKIP_AWS:
+    if not AWS_ADMIN_ACCESS_KEY or not AWS_ADMIN_SECRET_KEY:
+        raise SystemExit("[ERROR] AWS keys missing. Set AWS_* in .env or SKIP_AWS=1")
+    aws_s3 = boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ADMIN_ACCESS_KEY,
+        aws_secret_access_key=AWS_ADMIN_SECRET_KEY,
+        region_name=AWS_REGION,
+    )
+    aws_iam = boto3.client(
+        "iam",
+        aws_access_key_id=AWS_ADMIN_ACCESS_KEY,
+        aws_secret_access_key=AWS_ADMIN_SECRET_KEY,
+        region_name=AWS_REGION,
+    )
+else:
+    print("[INFO] SKIP_AWS=1 → AWS clients not created (GCP-only).")
 
 # ---------------------------------------------------------------------
 # GCP
@@ -178,7 +188,7 @@ def setup_gcp_users() -> dict:
                     print(f"[GCP][WARN] Retry {attempt + 1} setIamPolicy for {bucket_name}: {e}")
                     time.sleep(2)
 
-        # Issue key file for the service account
+        # Issue key file for the service account (reuse existing file key if quota hit)
         try:
             key = gcp_iam.projects().serviceAccounts().keys().create(
                 name=sa_resource,
@@ -187,7 +197,20 @@ def setup_gcp_users() -> dict:
             key_json = json.loads(base64.b64decode(key["privateKeyData"]).decode("utf-8"))
             result[name] = key_json
         except Exception as e:
-            print(f"[GCP][ERROR] Failed to create key for {name}: {e}")
+            print(f"[GCP][WARN] Failed to create key for {name}: {e}")
+            # Fall back to previously saved credential if present
+            if CREDENTIAL_OUTPUT_PATH.exists():
+                try:
+                    prev = json.loads(CREDENTIAL_OUTPUT_PATH.read_text(encoding="utf-8"))
+                    for row in prev:
+                        if row.get("name") == name and row.get("gcp_credential"):
+                            result[name] = row["gcp_credential"]
+                            print(f"[GCP][INFO] Reused existing credential for {name}")
+                            break
+                except Exception:
+                    pass
+            if name not in result:
+                print(f"[GCP][ERROR] No credential available for {name}")
 
     return result
 
@@ -362,4 +385,7 @@ def setup_aws() -> None:
 
 if __name__ == "__main__":
     setup_gcp()
-    setup_aws()
+    if SKIP_AWS:
+        print("[INFO] Skipped setup_aws() because SKIP_AWS=1")
+    else:
+        setup_aws()
